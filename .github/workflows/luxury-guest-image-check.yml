@@ -1,62 +1,55 @@
-name: Luxury Guest image check
+name: Luxury Guest image repair and verification
 on:
   push:
     branches: [luxury-guest-preview]
     paths: [.github/workflows/luxury-guest-image-check.yml]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  check:
+  repair:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Install image decoder
-        run: python -m pip install --quiet Pillow
-      - name: Retrieve originals and prepare optimized website images
-        shell: python
+        with:
+          ref: ${{ github.sha }}
+      - name: Install image and browser verification tools
         run: |
-          import urllib.request, json, pathlib, io, hashlib, shutil
-          from PIL import Image, ImageOps
-          out = pathlib.Path('image-recovery')
-          out.mkdir(exist_ok=True)
-          site = out / 'site'
-          site.mkdir(exist_ok=True)
-          for path in pathlib.Path('.').iterdir():
-            if path.name.startswith('.') or path.name == out.name:
-              continue
-            if path.is_file() and path.suffix in ['.html', '.js', '.css', '.md', '.txt', '.toml']:
-              shutil.copy2(path, site / path.name)
-          shutil.copytree('assets', site / 'assets', dirs_exist_ok=True)
-          images = site / 'assets' / 'photos'
-          images.mkdir(exist_ok=True)
-          urls = {
-            'bateau-en-famille': 'https://ik.imagekit.io/Fibonacci/bateau%20en%20famille.jpg?tr=orig-true',
-            'destinations-aube': 'https://ik.imagekit.io/Fibonacci/san-diego-dawn-early-morning-with-palm-tree-silhouette.jpg?tr=orig-true'
-          }
-          report = []
-          for name, url in urls.items():
-            request = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 LuxuryGuestImageRecovery/1.0'})
-            with urllib.request.urlopen(request, timeout=40) as response:
-              assert response.status == 200 and response.headers.get('Content-Type', '').startswith('image/'), 'Source is not a successful image response'
-              raw = response.read(30_000_000)
-              original = Image.open(io.BytesIO(raw))
-              original.load()
-              original = ImageOps.exif_transpose(original).convert('RGB')
-              item = {'name': name, 'source': url, 'status': response.status, 'original_size': list(original.size), 'source_bytes': len(raw), 'source_sha256': hashlib.sha256(raw).hexdigest(), 'outputs': []}
-              for width in ([600, 1200] if name == 'bateau-en-famille' else [960, 1920]):
-                resized = original.copy()
-                resized.thumbnail((width, width), Image.Resampling.LANCZOS)
-                output = images / (name + '-' + str(width) + '.webp')
-                resized.save(output, 'WEBP', quality=84, method=6)
-                item['outputs'].append({'path': str(output.relative_to(site)), 'dimensions': list(resized.size), 'bytes': output.stat().st_size})
-              report.append(item)
-              print(json.dumps(item, ensure_ascii=False), flush=True)
-          (out / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2))
-      - name: Save source package and recovered optimized photographs
+          python -m pip install --quiet Pillow playwright
+          python -m playwright install chromium --only-shell
+      - name: Recover client photographs and repair image rendering
+        run: |
+          test "$GITHUB_REF_NAME" = "luxury-guest-preview"
+          python maintenance/repair_images.py
+          node --check site.js
+          node --check site-v2.js
+          node --check v21.js
+          git diff --check
+      - name: Verify actual local rendering on desktop and mobile
+        run: python maintenance/verify_images.py --out image-verification/local
+      - name: Publish only the repaired site files and four optimized assets
+        id: publish
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add site.js site-v2.js v21.js assets/photos/bateau-en-famille-600.webp assets/photos/bateau-en-famille-1200.webp assets/photos/destinations-aube-960.webp assets/photos/destinations-aube-1920.webp
+          if ! git diff --cached --quiet; then
+            git commit -m 'Fix VIP and Destinations photographs with verified same-origin responsive assets'
+            git push origin HEAD:refs/heads/luxury-guest-preview
+          fi
+          REVISION=$(git rev-parse HEAD)
+          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
+          printf '%s\n' "$REVISION" > image-verification/revision.txt
+          printf 'https://raw.githack.com/Rostomzkghe/kitdeco-select/%s/index.html\n' "$REVISION" > image-verification/preview-url.txt
+      - name: Verify the published preview rather than only the source code
+        env:
+          REVISION: ${{ steps.publish.outputs.revision }}
+        run: |
+          python maintenance/verify_images.py --url "https://raw.githack.com/Rostomzkghe/kitdeco-select/$REVISION/" --out image-verification/public
+      - name: Save screenshots and verification results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: luxury-guest-image-recovery
-          path: image-recovery/
-          retention-days: 2
+          name: luxury-guest-images-verified
+          path: image-verification/
+          retention-days: 7
