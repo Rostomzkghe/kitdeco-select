@@ -1,55 +1,30 @@
-name: Luxury Guest image repair and verification
+name: Luxury Guest public image verification
 on:
   push:
     branches: [luxury-guest-preview]
     paths: [.github/workflows/luxury-guest-image-check.yml]
 permissions:
-  contents: write
+  contents: read
 jobs:
-  repair:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
-      - name: Install image and browser verification tools
+          persist-credentials: false
+      - name: Install browser verification tools
         run: |
-          python -m pip install --quiet Pillow playwright
+          python -m pip install --quiet playwright
           python -m playwright install chromium --only-shell
-      - name: Recover client photographs and repair image rendering
+      - name: Check the published repaired snapshot on desktop and mobile
         run: |
-          test "$GITHUB_REF_NAME" = "luxury-guest-preview"
-          python maintenance/repair_images.py
-          node --check site.js
-          node --check site-v2.js
-          node --check v21.js
-          git diff --check
-      - name: Verify actual local rendering on desktop and mobile
-        run: python maintenance/verify_images.py --out image-verification/local
-      - name: Publish only the repaired site files and four optimized assets
-        id: publish
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add site.js site-v2.js v21.js assets/photos/bateau-en-famille-600.webp assets/photos/bateau-en-famille-1200.webp assets/photos/destinations-aube-960.webp assets/photos/destinations-aube-1920.webp
-          if ! git diff --cached --quiet; then
-            git commit -m 'Fix VIP and Destinations photographs with verified same-origin responsive assets'
-            git push origin HEAD:refs/heads/luxury-guest-preview
-          fi
-          REVISION=$(git rev-parse HEAD)
-          echo "revision=$REVISION" >> "$GITHUB_OUTPUT"
-          printf '%s\n' "$REVISION" > image-verification/revision.txt
-          printf 'https://raw.githack.com/Rostomzkghe/kitdeco-select/%s/index.html\n' "$REVISION" > image-verification/preview-url.txt
-      - name: Verify the published preview rather than only the source code
-        env:
-          REVISION: ${{ steps.publish.outputs.revision }}
-        run: |
-          python maintenance/verify_images.py --url "https://raw.githack.com/Rostomzkghe/kitdeco-select/$REVISION/" --out image-verification/public
-      - name: Save screenshots and verification results
+          python maintenance/verify_images.py --url 'https://raw.githack.com/Rostomzkghe/kitdeco-select/1bd46154490eaa12232980894446236eeb7c29ee/' --out image-verification/public
+      - name: Save actual public screenshots and verification results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: luxury-guest-images-verified
+          name: luxury-guest-public-images-verified
           path: image-verification/
           retention-days: 7
