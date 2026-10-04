@@ -1,4 +1,4 @@
-"""Check the actual image decoding and UI on a local server or public preview.
+"""Check actual image decoding and UI on a local server or public preview.
 No form is submitted and no message is sent. ImageKit and Jeanneau are blocked
 in the browser deliberately to ensure the repaired images are self-hosted.
 """
@@ -44,6 +44,12 @@ try:
                 for filename in ['index.html', 'destinations.html', 'activites.html']:
                     response = page.goto(base + filename, wait_until='domcontentloaded', timeout=60000)
                     assert response.status == 200, f'{filename}: HTTP {response.status}'
+                    # The host can show a first-visit information page. Follow its
+                    # ordinary navigation link; no login or form data is involved.
+                    open_page = page.get_by_text('Open the page', exact=True)
+                    if open_page.is_visible():
+                        open_page.click()
+                        page.wait_for_load_state('domcontentloaded')
                     page.wait_for_selector('html[data-client-images="ready"]', state='attached')
                     selector = '.service-card:has(a[href="activites.html"]) img' if filename == 'index.html' else '.hero-visual img'
                     target = page.locator(selector).first
