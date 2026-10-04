@@ -1,0 +1,48 @@
+name: Package validated Luxury Guest website
+on:
+  push:
+    branches: [luxury-guest-preview]
+    paths: [.github/workflows/luxury-guest-release-package.yml]
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: e65eaba8e2c2bd1141fba89dd2c91bce8e46fb08
+          persist-credentials: false
+      - name: Check scripts and package only public website assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check site.js
+          node --check site-v2.js
+          node --check v21.js
+          python - <<'PY'
+          import hashlib, json, pathlib, zipfile
+          root = pathlib.Path('.')
+          out = root / 'release-output'
+          out.mkdir()
+          files = sorted(p for p in root.iterdir() if p.is_file() and (p.suffix in {'.html', '.js', '.css'} or p.name in {'robots.txt', 'sitemap.xml', '_headers', '_redirects', 'netlify.toml'}))
+          files += sorted(p for p in (root / 'assets').rglob('*') if p.is_file() and p.suffix.lower() in {'.svg', '.webp', '.jpg', '.jpeg', '.png', '.avif', '.ico'})
+          required = ['index.html', 'contact.html', 'proprietaires.html', 'site.js', 'site-v2.js', 'v21.js', 'styles.css', 'styles-v2.css', 'v21.css', 'assets/photos/bateau-en-famille-600.webp', 'assets/photos/bateau-en-famille-1200.webp', 'assets/photos/destinations-aube-960.webp', 'assets/photos/destinations-aube-1920.webp']
+          names = {p.as_posix() for p in files}
+          assert set(required) <= names, set(required) - names
+          assert all(p.stat().st_size > 0 and not p.is_symlink() for p in files)
+          manifest = {'source_revision': 'e65eaba8e2c2bd1141fba89dd2c91bce8e46fb08', 'files': [{'path': p.as_posix(), 'bytes': p.stat().st_size, 'sha256': hashlib.sha256(p.read_bytes()).hexdigest()} for p in files]}
+          with zipfile.ZipFile(out / 'luxury-guest-mise-en-ligne.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
+              for p in files:
+                  archive.write(p, p.as_posix())
+          (out / 'manifest.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2))
+          print(json.dumps({'file_count': len(files), 'archive_bytes': (out / 'luxury-guest-mise-en-ligne.zip').stat().st_size}))
+          PY
+      - name: Export website package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: luxury-guest-deployment-package
+          path: release-output/
+          retention-days: 7
+          if-no-files-found: error
