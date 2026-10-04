@@ -8,45 +8,55 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 4
     steps:
-      - name: Inspect the two client image URLs and preview headers
+      - uses: actions/checkout@v4
+      - name: Install image decoder
+        run: python -m pip install --quiet Pillow
+      - name: Retrieve originals and prepare optimized website images
         shell: python
         run: |
-          import urllib.request, urllib.error, json, os, pathlib
-          out = pathlib.Path('image-diagnostic')
+          import urllib.request, json, pathlib, io, hashlib, shutil
+          from PIL import Image, ImageOps
+          out = pathlib.Path('image-recovery')
           out.mkdir(exist_ok=True)
+          site = out / 'site'
+          site.mkdir(exist_ok=True)
+          for path in pathlib.Path('.').iterdir():
+            if path.name.startswith('.') or path.name == out.name:
+              continue
+            if path.is_file() and path.suffix in ['.html', '.js', '.css', '.md', '.txt', '.toml']:
+              shutil.copy2(path, site / path.name)
+          shutil.copytree('assets', site / 'assets', dirs_exist_ok=True)
+          images = site / 'assets' / 'photos'
+          images.mkdir(exist_ok=True)
           urls = {
-            'boat': 'https://ik.imagekit.io/Fibonacci/bateau%20en%20famille.jpg',
-            'destinations': 'https://ik.imagekit.io/Fibonacci/san-diego-dawn-early-morning-with-palm-tree-silhouette.jpg',
-            'preview': 'https://raw.githack.com/Rostomzkghe/kitdeco-select/8cc848deaeba17ec77353a49de5106a688382d0f/index.html'
+            'bateau-en-famille': 'https://ik.imagekit.io/Fibonacci/bateau%20en%20famille.jpg?tr=orig-true',
+            'destinations-aube': 'https://ik.imagekit.io/Fibonacci/san-diego-dawn-early-morning-with-palm-tree-silhouette.jpg?tr=orig-true'
           }
           report = []
           for name, url in urls.items():
-            for referer in (['', 'https://raw.githack.com/'] if name != 'preview' else ['']):
-              headers = {'User-Agent': 'Mozilla/5.0 LuxuryGuestImageCheck/1.0'}
-              if referer:
-                headers['Referer'] = referer
-              item = {'name': name, 'url': url, 'referer': referer}
-              try:
-                with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=25) as response:
-                  content = response.read(20_000_000)
-                  item.update(status=response.status, headers=dict(response.headers), bytes=len(content), final_url=response.url)
-                  if response.headers.get('Content-Type', '').startswith('image/'):
-                    (out / (name + '.jpg')).write_bytes(content)
-                    item['magic'] = content[:16].hex()
-                  else:
-                    item['body'] = content[:2500].decode('utf-8', errors='replace')
-              except urllib.error.HTTPError as error:
-                item.update(status=error.code, headers=dict(error.headers), body=error.read(2500).decode('utf-8', errors='replace'))
-              except Exception as error:
-                item.update(error=str(error))
+            request = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0 LuxuryGuestImageRecovery/1.0'})
+            with urllib.request.urlopen(request, timeout=40) as response:
+              assert response.status == 200 and response.headers.get('Content-Type', '').startswith('image/'), 'Source is not a successful image response'
+              raw = response.read(30_000_000)
+              original = Image.open(io.BytesIO(raw))
+              original.load()
+              original = ImageOps.exif_transpose(original).convert('RGB')
+              item = {'name': name, 'source': url, 'status': response.status, 'original_size': list(original.size), 'source_bytes': len(raw), 'source_sha256': hashlib.sha256(raw).hexdigest(), 'outputs': []}
+              for width in ([600, 1200] if name == 'bateau-en-famille' else [960, 1920]):
+                resized = original.copy()
+                resized.thumbnail((width, width), Image.Resampling.LANCZOS)
+                output = images / (name + '-' + str(width) + '.webp')
+                resized.save(output, 'WEBP', quality=84, method=6)
+                item['outputs'].append({'path': str(output.relative_to(site)), 'dimensions': list(resized.size), 'bytes': output.stat().st_size})
               report.append(item)
               print(json.dumps(item, ensure_ascii=False), flush=True)
           (out / 'report.json').write_text(json.dumps(report, ensure_ascii=False, indent=2))
-      - name: Save diagnostic and retrievable source images
+      - name: Save source package and recovered optimized photographs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: luxury-guest-image-diagnostic
-          path: image-diagnostic/
+          name: luxury-guest-image-recovery
+          path: image-recovery/
           retention-days: 2
