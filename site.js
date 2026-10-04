@@ -1,93 +1,42 @@
-/* V2.1 entry point. Preserve the validated layout and apply client-supplied images. */
+/* Luxury Guest V2.1 — verified, same-origin client photographs.
+   The originals are optimized at build time, not by the visitor's browser. */
 (async () => {
   'use strict';
-  const clientImages = {
-    boat: {
-      src: 'https://ik.imagekit.io/Fibonacci/bateau%20en%20famille.jpg',
-      alt: 'Sortie en bateau et baignade en mer en famille'
-    },
-    destinations: {
-      src: 'https://ik.imagekit.io/Fibonacci/san-diego-dawn-early-morning-with-palm-tree-silhouette.jpg',
-      alt: 'Silhouettes de palmiers à l’aube à San Diego'
-    }
-  };
-
-  function setClientImage(img, image) {
-    if (!img) return;
-    // Remove the previous responsive sources so they cannot override the new URL.
-    img.removeAttribute('srcset');
-    img.removeAttribute('sizes');
-    img.src = image.src;
-    img.alt = image.alt;
-    img.decoding = 'async';
-    img.dataset.clientImage = 'true';
-  }
-
-  function applyClientImages() {
-    const page = document.body.dataset.page;
-    // Update the activity card and the same photograph wherever the V2.1 uses it.
-    document.querySelectorAll('img.family-boat-image, .service-card a[href="activites.html"] img, [data-photo="yacht"] img').forEach(img => {
-      setClientImage(img, clientImages.boat);
-    });
-
-    // Only the Destinations overview hero uses the new dawn photograph.
-    if (page === 'destinations') {
-      const heroImage = document.querySelector('#contenu .hero-visual img');
-      setClientImage(heroImage, clientImages.destinations);
-      if (heroImage) {
-        heroImage.classList.remove('family-boat-image');
-        heroImage.loading = 'eager';
-        heroImage.setAttribute('fetchpriority', 'high');
-      }
-    }
-
-    // Registered after the existing gallery handlers to preserve the same source on zoom.
-    document.querySelectorAll('[data-photo="yacht"]').forEach(button => {
-      button.addEventListener('click', () => {
-        const dialog = document.querySelector('.lightbox');
-        if (!dialog) return;
-        setClientImage(dialog.querySelector('img'), clientImages.boat);
-        const caption = dialog.querySelector('figcaption');
-        if (caption) caption.textContent = 'Sortie en mer en famille · Photographie d’ambiance fournie pour Luxury Guest.';
-      });
-    });
-
-    // Remove the obsolete Jeanneau attribution for the replaced candidate image.
-    if (page === 'credits') {
-      document.querySelectorAll('.info-callout a[href*="jeanneau.com"]').forEach(link => {
-        const notice = link.closest('.info-callout');
-        if (notice) notice.textContent = 'Les visuels « Activités VIP » et du hero « Destinations » sont fournis par le client et hébergés sur ImageKit. Les autres photographies conservent leurs crédits ci-dessous.';
-      });
-      const grid = document.querySelector('.credits-grid');
-      const previousCredit = grid?.querySelector('a[href*="FWJinfDsIn8"]')?.closest('.credit');
-      if (previousCredit) previousCredit.remove();
-      if (grid) {
-        [clientImages.boat, clientImages.destinations].forEach(image => {
-          const credit = document.createElement('div');
-          credit.className = 'credit';
-          const description = document.createElement('p');
-          description.textContent = image.alt;
-          const source = document.createElement('p');
-          source.textContent = 'Visuel fourni par le client · Hébergement ImageKit';
-          const link = document.createElement('a');
-          link.href = image.src;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.textContent = 'Voir le visuel ↗';
-          credit.append(description, source, link);
-          grid.append(credit);
-        });
-      }
-    }
-    document.documentElement.dataset.clientImages = 'ready';
-  }
-
   document.documentElement.classList.add('v21-loading');
   try {
+    const D = window.LG;
+    if (!D || !D.images) throw new Error('Contenu du site indisponible.');
+    D.clientImages = {
+      yacht: {
+        src: 'assets/photos/bateau-en-famille-1200.webp',
+        small: 'assets/photos/bateau-en-famille-600.webp',
+        smallWidth: 600, width: 1200, height: 1200,
+        alt: 'Une famille partage un moment à bord d’un bateau au coucher du soleil',
+        className: 'family-boat-image'
+      },
+      'destinations-cover': {
+        src: 'assets/photos/destinations-aube-1920.webp',
+        small: 'assets/photos/destinations-aube-960.webp',
+        smallWidth: 960, width: 1920, height: 1281,
+        alt: 'Palmiers, jardin et bassin éclairé à l’aube à San Diego',
+        className: 'destinations-cover-image'
+      }
+    };
+    // Register before rendering: no old yacht, Jeanneau logo or failing CDN URL.
+    for (const [key, image] of Object.entries(D.clientImages)) {
+      D.images[key] = [image.src, image.alt, 'Visuel fourni pour Luxury Guest', ''];
+    }
     await import('./site-v2.js');
     await import('./v21.js');
-    // Apply before revealing the page: no old logo is displayed between renders.
-    applyClientImages();
+    if (document.body.dataset.page === 'credits') {
+      const content = document.querySelector('.content-narrow');
+      const intro = content?.querySelector(':scope > p');
+      if (intro) intro.textContent = 'Les photographies du bateau en famille et des palmiers à l’aube sont les visuels fournis pour Luxury Guest, optimisés et hébergés avec le site. Les autres images d’ambiance conservent leurs sources indiquées ci-dessous.';
+      const headings = [...(content?.querySelectorAll('h2') || [])];
+      const licence = headings.find(heading => heading.textContent === 'Licence');
+      if (licence?.nextElementSibling) licence.nextElementSibling.textContent = 'Les autres photographies proviennent de la collection Unsplash. Les titulaires doivent valider les droits des visuels fournis pour la marque avant son lancement commercial.';
+    }
+    document.documentElement.dataset.clientImages = 'ready';
   } catch (error) {
     console.error('Luxury Guest: chargement incomplet', error);
     const notice = document.createElement('p');

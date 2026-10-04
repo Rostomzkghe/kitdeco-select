@@ -142,12 +142,7 @@
     },true);
   }
 
-  // Candidate photograph: permission or licensed replacement required before commercial launch.
-  const familyBoat='https://app.jeanneau.com/uploads/boat/cover/6579bf90749d5788676692.jpg';
-  const familyAlt='Une famille profite d’une baignade en mer près d’un petit bateau de plaisance';
-  document.querySelectorAll('img[src*="1569263979104-865ab7cd8d13"]').forEach(img=>{
-    img.removeAttribute('srcset');img.removeAttribute('sizes');img.src=familyBoat;img.alt=familyAlt;img.classList.add('family-boat-image');
-  });
+  // Client photography is now rendered from verified local assets.
   document.querySelectorAll('.service-card').forEach(card=>{
     if(card.querySelector('a[href="activites.html"]'))card.querySelector('.card-content > p').textContent='Sorties en mer, baignades et expériences privées. Des moments à vivre, vraiment.';
   });
@@ -159,15 +154,6 @@
     const card=main.querySelector('.offer-card');
     if(card){card.querySelector('h3').textContent='Une parenthèse en mer';card.querySelector('p').textContent='Petit bateau, baignade et criques à découvrir, en famille ou entre amis. Un programme adapté aux participants et aux conditions du jour.';}
   }
-  document.querySelectorAll('[data-photo="yacht"]').forEach(btn=>btn.addEventListener('click',()=>{
-    const dialog=document.querySelector('.lightbox');
-    dialog.querySelector('img').src=familyBoat;dialog.querySelector('img').alt=familyAlt;
-    dialog.querySelector('figcaption').textContent='Illustration proposée · source Jeanneau · droits à confirmer avant usage commercial.';
-  }));
-  if(page==='credits') {
-    main.querySelector('.content-narrow')?.insertAdjacentHTML('afterbegin','<div class="info-callout"><strong>V2.1 · nouveau visuel Activités VIP</strong><p>Scène de baignade en famille près d’un bateau, proposée pour valider la direction visuelle. Source : <a href="https://www.jeanneau.com/events/2828-polboat-yachting-festival-gdynia-poland" target="_blank" rel="noopener noreferrer">Jeanneau</a>. La licence de réutilisation commerciale n’a pas été obtenue. Avant lancement, utiliser une photographie du client, obtenir l’autorisation correspondante ou remplacer ce visuel par une image dûment licenciée.</p></div>');
-  }
-
   document.querySelectorAll('.hero h1').forEach(title=>{
     title.innerHTML=title.innerHTML.split(/<br\s*\/?\s*>/i).map((line,index)=>`<span class="title-row"><span style="--line-delay:${index*100}ms">${line}</span></span>`).join('');
   });
